@@ -538,14 +538,15 @@ internal sealed class MainForm : Form
 		}
 		string fileName = result.Latest.AssetName.Length > 0 ? result.Latest.AssetName : ("PocketDeck-" + result.Latest.Version + "-setup.exe");
 		string target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PocketDeck", "updates", fileName);
+		string kindText = result.Latest.AssetIsAppPackage ? "应用包" : "安装器";
 		try
 		{
-			_aboutPage.SetUpdateState("正在下载更新… 0%", Tone.Info, true, result.Latest.Version, result.Latest.Notes);
+			_aboutPage.SetUpdateState("正在下载更新（" + kindText + "）… 0%", Tone.Info, true, result.Latest.Version, result.Latest.Notes);
 			Progress<double> progress = new Progress<double>(delegate(double ratio)
 			{
 				if (!IsDisposed && !Disposing)
 				{
-					_aboutPage.SetUpdateState($"正在下载更新… {(int)Math.Round(ratio * 100.0)}%", Tone.Info, true, result.Latest.Version, result.Latest.Notes);
+					_aboutPage.SetUpdateState($"正在下载更新（{kindText}）… {(int)Math.Round(ratio * 100.0)}%", Tone.Info, true, result.Latest.Version, result.Latest.Notes);
 				}
 			});
 			bool ok = await UpdateCheckService.DownloadAsync(result.Latest.AssetUrl, target, result.Latest.AssetSha256, progress, _formLifetime.Token).ConfigureAwait(continueOnCapturedContext: true);
@@ -563,7 +564,7 @@ internal sealed class MainForm : Form
 			_lastUserMessageAt = DateTime.UtcNow;
 			_shell.Status.SetMessage("更新包已下载并校验通过，正在安装…", Tone.Ok);
 			_aboutPage.SetUpdateState("正在安装并重启…", Tone.Ok, true, result.Latest.Version, result.Latest.Notes);
-			StartDeferredInstall(target);
+			StartDeferredInstall(target, result.Latest.AssetIsAppPackage);
 			Close();
 			return true;
 		}
@@ -584,15 +585,20 @@ internal sealed class MainForm : Form
 	/// 接力脚本：等本进程退出 → 静默安装到当前目录（就地更新，便携版与安装版都适用）→ 重新启动 → 自删。
 	/// 运行中的 exe 无法被覆盖，所以必须先退出，由脚本接手。
 	/// </summary>
-	private void StartDeferredInstall(string installerPath)
+	private void StartDeferredInstall(string installerPath, bool isAppPackage)
 	{
 		string baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
 		string scriptPath = Path.Combine(Path.GetTempPath(), "pocketdeck-update.cmd");
+		// 应用包（仅程序文件，约 7MB）：退出后直接用系统自带 tar 解压覆盖，不经安装器；
+		// 安装器（首次安装用）：静默安装到当前目录。
+		string apply = isAppPackage
+			? "tar -xf \"" + installerPath + "\" -C \"" + baseDir + "\""
+			: "\"" + installerPath + "\" --silent --install-dir \"" + baseDir + "\"";
 		string script = string.Join("\r\n", new string[]
 		{
 			"@echo off",
 			"ping -n 3 127.0.0.1 >nul",
-			"\"" + installerPath + "\" --silent --install-dir \"" + baseDir + "\"",
+			apply,
 			"start \"\" \"" + Path.Combine(baseDir, AppIdentity.ExecutableName) + "\"",
 			"del \"%~f0\"",
 			string.Empty,

@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.IO.Compression;
 using System.Reflection;
 using System.Windows.Forms;
@@ -26,6 +27,11 @@ namespace PocketDeck.Setup
         {
             log?.Invoke("正在准备安装目录…");
             Directory.CreateDirectory(targetDir);
+
+            // 程序为依赖框架发布（负载仅 14MB，不再内嵌 124MB 运行时），
+            // 因此这里必须先确保目标机具备 .NET 10 桌面运行时，否则装完也起不来。
+            log?.Invoke("正在检查 .NET 10 桌面运行时…");
+            EnsureDesktopRuntime(log);
 
             log?.Invoke("正在解压应用程序文件…");
             using (var zip = GetPayload())
@@ -66,6 +72,84 @@ namespace PocketDeck.Setup
                     log?.Invoke("启动失败: " + ex.Message);
                 }
             }
+        }
+
+        /// <summary>官方 .NET 10 桌面运行时安装包（x64，微软 aka.ms 短链）。</summary>
+        private const string DesktopRuntimeUrl = "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe";
+
+        /// <summary>检测 .NET 10 桌面运行时是否可用（目录 + 注册表双通道，避免漏判）。</summary>
+        public static bool IsDesktopRuntimeInstalled()
+        {
+            foreach (var root in new[]
+            {
+                Environment.GetEnvironmentVariable("DOTNET_ROOT"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet"),
+            })
+            {
+                if (string.IsNullOrWhiteSpace(root)) continue;
+                var shared = Path.Combine(root, "shared", "Microsoft.WindowsDesktop.App");
+                if (Directory.Exists(shared) &&
+                    Directory.EnumerateDirectories(shared).Any(d => Path.GetFileName(d).StartsWith("10.")))
+                {
+                    return true;
+                }
+            }
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App");
+                if (key != null && key.GetValueNames().Any(n => n.StartsWith("10."))) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>缺运行时则联网安装（静默），装完复检；失败抛出带下载地址的明确错误。</summary>
+        private static void EnsureDesktopRuntime(Action<string> log)
+        {
+            if (IsDesktopRuntimeInstalled())
+            {
+                log?.Invoke(".NET 10 桌面运行时已就绪。");
+                return;
+            }
+            log?.Invoke("未检测到 .NET 10 桌面运行时，正在联网下载安装…");
+            var installer = Path.Combine(Path.GetTempPath(), "windowsdesktop-runtime-10-x64.exe");
+            try
+            {
+                using (var client = new System.Net.WebClient())
+                {
+                    client.DownloadFile(DesktopRuntimeUrl, installer);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "下载 .NET 10 桌面运行时失败：" + ex.Message +
+                    "\n请手动安装后重试：" + DesktopRuntimeUrl);
+            }
+
+            log?.Invoke("正在静默安装运行时（可能需要几分钟，若弹出权限确认请允许）…");
+            using (var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = installer,
+                Arguments = "/install /quiet /norestart",
+                UseShellExecute = true,
+            }))
+            {
+                if (process == null) throw new InvalidOperationException("无法启动 .NET 运行时安装程序。");
+                if (!process.WaitForExit(600000))
+                {
+                    throw new InvalidOperationException("安装 .NET 10 桌面运行时超时，请手动安装后重试：" + DesktopRuntimeUrl);
+                }
+                log?.Invoke("运行时安装程序退出码：" + process.ExitCode);
+            }
+
+            if (!IsDesktopRuntimeInstalled())
+            {
+                throw new InvalidOperationException(
+                    "安装后仍未检测到 .NET 10 桌面运行时，请手动安装后重试：" + DesktopRuntimeUrl);
+            }
+            log?.Invoke(".NET 10 桌面运行时安装完成。");
         }
 
         private static void ExtractZip(Stream zip, string targetDir, Action<int> progress)

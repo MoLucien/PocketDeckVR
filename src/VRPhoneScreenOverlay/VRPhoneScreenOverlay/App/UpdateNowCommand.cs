@@ -23,7 +23,7 @@ internal static class UpdateNowCommand
 			return 0;
 		}
 		UpdateRelease release = result.Latest;
-		Console.WriteLine("[update] latest=" + release.Version + " asset=" + release.AssetName + " bytes=" + release.AssetSize + " sha256=" + (release.AssetSha256.Length > 12 ? release.AssetSha256.Substring(0, 12) + "..." : "(none)"));
+		Console.WriteLine("[update] latest=" + release.Version + " asset=" + release.AssetName + (release.AssetIsAppPackage ? "(应用包)" : "(安装器)") + " bytes=" + release.AssetSize + " sha256=" + (release.AssetSha256.Length > 12 ? release.AssetSha256.Substring(0, 12) + "..." : "(none)"));
 		string fileName = release.AssetName.Length > 0 ? release.AssetName : ("PocketDeck-" + release.Version + "-setup.exe");
 		string target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PocketDeck", "updates", fileName);
 		Progress<double> progress = new Progress<double>(delegate(double ratio)
@@ -39,11 +39,14 @@ internal static class UpdateNowCommand
 		}
 		string baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
 		string scriptPath = Path.Combine(Path.GetTempPath(), "pocketdeck-update-cli.cmd");
+		string apply = release.AssetIsAppPackage
+			? "tar -xf \"" + target + "\" -C \"" + baseDir + "\""
+			: "\"" + target + "\" --silent --install-dir \"" + baseDir + "\"";
 		string script = string.Join("\r\n", new string[]
 		{
 			"@echo off",
 			"ping -n 3 127.0.0.1 >nul",
-			"\"" + target + "\" --silent --install-dir \"" + baseDir + "\"",
+			apply,
 			"start \"\" \"" + Path.Combine(baseDir, AppIdentity.ExecutableName) + "\"",
 			"del \"%~f0\"",
 			string.Empty,

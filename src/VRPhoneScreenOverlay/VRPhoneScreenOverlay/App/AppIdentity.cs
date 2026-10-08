@@ -13,10 +13,10 @@ internal static class AppIdentity
 	public const string ShortName = "PocketDeckVR";
 
 	/// <summary>对外显示的版本号（按需求为 0.1beta；程序集元数据为 0.1.0.0）。</summary>
-	public const string DisplayVersion = "0.3beta";
+	public const string DisplayVersion = "0.4beta";
 
 	/// <summary>用于版本比较的数值版本（三段式）。</summary>
-	public const string Version = "0.3.0";
+	public const string Version = "0.4.0";
 
 	/// <summary>开源许可名称与全文地址。</summary>
 	public const string LicenseName = "Boost Software License 1.0";

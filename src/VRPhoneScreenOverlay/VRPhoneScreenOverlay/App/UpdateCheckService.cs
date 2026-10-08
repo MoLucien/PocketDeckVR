@@ -29,7 +29,7 @@ internal enum UpdateStatus
 }
 
 /// <summary>一次发布（GitHub Release 的必要字段）。</summary>
-internal sealed record UpdateRelease(string Version, string Tag, string Title, string Notes, string PageUrl, bool PreRelease, DateTimeOffset? PublishedAt, string AssetName, string AssetUrl, long AssetSize, string AssetSha256);
+internal sealed record UpdateRelease(string Version, string Tag, string Title, string Notes, string PageUrl, bool PreRelease, DateTimeOffset? PublishedAt, string AssetName, string AssetUrl, long AssetSize, string AssetSha256, bool AssetIsAppPackage);
 
 /// <summary>检查结果。</summary>
 internal sealed record UpdateCheckResult(UpdateStatus Status, string CurrentVersion, UpdateRelease? Latest, string Message)
@@ -91,6 +91,9 @@ internal sealed class UpdatePreferences
 internal static class UpdateCheckService
 {
 	private static readonly HttpClient Http = CreateClient();
+
+	/// <summary>下载专用客户端：不能设总超时（大文件必然超时），停滞检测由每次读取的 30 秒窗口负责。</summary>
+	private static readonly HttpClient DownloadHttp = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
 
 	private static HttpClient CreateClient()
 	{
@@ -191,7 +194,7 @@ internal static class UpdateCheckService
 				continue;
 			}
 			DateTimeOffset? published = DateTimeOffset.TryParse(GetString(item, "published_at"), CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset parsed) ? parsed : null;
-			(string assetName, string assetUrl, long assetSize, string assetSha) = SelectAsset(item);
+			(string assetName, string assetUrl, long assetSize, string assetSha, bool assetIsApp) = SelectAsset(item);
 			releases.Add(new UpdateRelease(
 				Version: NormalizeVersion(tag),
 				Tag: tag,
@@ -203,7 +206,8 @@ internal static class UpdateCheckService
 				AssetName: assetName,
 				AssetUrl: assetUrl,
 				AssetSize: assetSize,
-				AssetSha256: assetSha));
+				AssetSha256: assetSha,
+				AssetIsAppPackage: assetIsApp));
 		}
 		return releases
 			.OrderByDescending(release => release.PublishedAt ?? DateTimeOffset.MinValue)
@@ -212,15 +216,17 @@ internal static class UpdateCheckService
 	}
 
 	/// <summary>挑选安装包资产：优先名字里带 setup 的 exe，否则取第一个。</summary>
-	private static (string Name, string Url, long Size, string Sha256) SelectAsset(JsonElement release)
+	private static (string Name, string Url, long Size, string Sha256, bool IsAppPackage) SelectAsset(JsonElement release)
 	{
 		string name = string.Empty;
 		string url = string.Empty;
 		long size = 0L;
 		string sha = string.Empty;
+		int best = 0;
+		bool isApp = false;
 		if (!release.TryGetProperty("assets", out JsonElement assets) || assets.ValueKind != JsonValueKind.Array)
 		{
-			return (name, url, size, sha);
+			return (name, url, size, sha, false);
 		}
 		foreach (JsonElement asset in assets.EnumerateArray())
 		{
@@ -229,21 +235,25 @@ internal static class UpdateCheckService
 			{
 				continue;
 			}
-			bool preferred = candidate.Contains("setup", StringComparison.OrdinalIgnoreCase) && candidate.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
-			if (url.Length > 0 && !preferred)
+			// 优先级：应用包（-app.zip，约 7MB，就地替换）> 安装器（setup.exe，首次安装用）
+			int rank = candidate.EndsWith("-app.zip", StringComparison.OrdinalIgnoreCase) ? 2
+				: (candidate.Contains("setup", StringComparison.OrdinalIgnoreCase) && candidate.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? 1 : 0);
+			if (rank == 0 || rank <= best)
 			{
 				continue;
 			}
+			best = rank;
+			isApp = rank == 2;
 			name = candidate;
 			url = GetString(asset, "browser_download_url");
 			size = (asset.TryGetProperty("size", out JsonElement sizeElement) && sizeElement.ValueKind == JsonValueKind.Number) ? sizeElement.GetInt64() : 0L;
 			sha = GetString(asset, "digest").Replace("sha256:", string.Empty, StringComparison.OrdinalIgnoreCase);
-			if (preferred)
+			if (rank == 2)
 			{
 				break;
 			}
 		}
-		return (name, url, size, sha);
+		return (name, url, size, sha, isApp);
 	}
 
 	/// <summary>
@@ -257,7 +267,7 @@ internal static class UpdateCheckService
 		{
 			Directory.CreateDirectory(folder);
 		}
-		using HttpResponseMessage response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+		using HttpResponseMessage response = await DownloadHttp.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 		response.EnsureSuccessStatusCode();
 		long total = response.Content.Headers.ContentLength ?? 0L;
 		await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -266,8 +276,23 @@ internal static class UpdateCheckService
 		byte[] buffer = new byte[81920];
 		long received = 0L;
 		int read;
-		while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+		while (true)
 		{
+			// 停滞检测：30 秒内没有任何字节即判定链路挂死，中止并保留已下载部分
+			using CancellationTokenSource readWindow = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			readWindow.CancelAfter(TimeSpan.FromSeconds(30));
+			try
+			{
+				read = await input.ReadAsync(buffer, readWindow.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+			{
+				throw new TimeoutException("下载停滞（30 秒无数据），已中止");
+			}
+			if (read <= 0)
+			{
+				break;
+			}
 			await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
 			sha.TransformBlock(buffer, 0, read, null, 0);
 			received += read;
