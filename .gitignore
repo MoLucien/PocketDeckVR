@@ -1,0 +1,20 @@
+# 构建产物
+bin/
+obj/
+publish/
+build/
+release/
+# 本地测试与快照产物
+snapshots*/
+snap-*/
+ui-baseline/
+ui-r2/
+ui-r3/
+probe/
+*.user
+*.suo
+# 本地工作档案 / 一次性脚本 / 旧版归档
+.workbuddy/
+orig-backup/
+fix_*.py
+tail_log*.py

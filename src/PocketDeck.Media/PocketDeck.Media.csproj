@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PocketDeck.Media</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemGroup />
+  <ItemGroup>
+    <Reference Include="Vortice.MediaFoundation">
+      <HintPath>Vortice.MediaFoundation.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpGen.Runtime">
+      <HintPath>SharpGen.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="Concentus">
+      <HintPath>Concentus.dll</HintPath>
+    </Reference>
+    <Reference Include="NAudio.Core">
+      <HintPath>NAudio.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="NAudio.Wasapi">
+      <HintPath>NAudio.Wasapi.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

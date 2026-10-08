@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PocketDeck.Session</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\PocketDeck.Android\PocketDeck.Android.csproj" />
+    <ProjectReference Include="..\PocketDeck.Media\PocketDeck.Media.csproj" />
+    <ProjectReference Include="..\PocketDeck.Contracts\PocketDeck.Contracts.csproj" />
+    <ProjectReference Include="..\PocketDeck.Input\PocketDeck.Input.csproj" />
+    <ProjectReference Include="..\PocketDeck.SteamVR\PocketDeck.SteamVR.csproj" />
+  </ItemGroup>
+</Project>

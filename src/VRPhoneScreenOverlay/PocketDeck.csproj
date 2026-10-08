@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PocketDeck</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>True</UseWindowsForms>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+    <!-- UI 控件全部由代码构造、从不进入设计器，无需 DesignerSerializationVisibility 标注 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);WFO1000</WarningsNotAsErrors>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="PocketDeck.App.Assets.steam.png" />
+    <None Remove="PocketDeck.App.Assets.steamvr.png" />
+    <EmbeddedResource Include="PocketDeck.App.Assets.steam.png" LogicalName="PocketDeck.App.Assets.steam.png" />
+    <EmbeddedResource Include="PocketDeck.App.Assets.steamvr.png" LogicalName="PocketDeck.App.Assets.steamvr.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PocketDeck.Contracts\PocketDeck.Contracts.csproj" />
+    <ProjectReference Include="..\PocketDeck.Settings\PocketDeck.Settings.csproj" />
+    <ProjectReference Include="..\PocketDeck.Core\PocketDeck.Core.csproj" />
+    <ProjectReference Include="..\PocketDeck.Android\PocketDeck.Android.csproj" />
+    <ProjectReference Include="..\PocketDeck.Session\PocketDeck.Session.csproj" />
+    <ProjectReference Include="..\PocketDeck.SteamVR\PocketDeck.SteamVR.csproj" />
+    <ProjectReference Include="..\PocketDeck.Media\PocketDeck.Media.csproj" />
+  </ItemGroup>
+</Project>

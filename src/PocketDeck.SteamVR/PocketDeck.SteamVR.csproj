@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>PocketDeck.SteamVR</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="PocketDeck.SteamVR.PhoneMenuLabels" />
+    <None Remove="PocketDeck.SteamVR.ControlGlyphs" />
+    <EmbeddedResource Include="PocketDeck.SteamVR.PhoneMenuLabels" LogicalName="PocketDeck.SteamVR.PhoneMenuLabels" />
+    <EmbeddedResource Include="PocketDeck.SteamVR.ControlGlyphs" LogicalName="PocketDeck.SteamVR.ControlGlyphs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Vortice.Direct3D11">
+      <HintPath>Vortice.Direct3D11.dll</HintPath>
+    </Reference>
+    <Reference Include="Vortice.DXGI">
+      <HintPath>Vortice.DXGI.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpGen.Runtime">
+      <HintPath>SharpGen.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="Vortice.Mathematics">
+      <HintPath>Vortice.Mathematics.dll</HintPath>
+    </Reference>
+    <Reference Include="Vortice.DirectX">
+      <HintPath>Vortice.DirectX.dll</HintPath>
+    </Reference>
+    <ProjectReference Include="..\PocketDeck.Media\PocketDeck.Media.csproj" />
+    <ProjectReference Include="..\PocketDeck.Contracts\PocketDeck.Contracts.csproj" />
+  </ItemGroup>
+</Project>
