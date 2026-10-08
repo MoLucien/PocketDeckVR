@@ -343,9 +343,9 @@ internal sealed class MainForm : Form
 		{
 			OpenExternalUrl(FeedbackUrl);
 		};
-		_aboutPage.OpenDownload.Click += delegate
+		_aboutPage.OpenDownload.Click += async delegate
 		{
-			OpenExternalUrl(_updatePageUrl);
+			await PerformInAppUpdateAsync();
 		};
 		_aboutPage.AutoCheck.CheckedChanged += delegate
 		{
@@ -485,6 +485,8 @@ internal sealed class MainForm : Form
 
 	private string _updatePageUrl = string.Empty;
 
+	private UpdateCheckResult _lastUpdateResult = new UpdateCheckResult(UpdateStatus.Idle, AppIdentity.DisplayVersion, null, "尚未检查更新");
+
 	/// <summary>启动后的静默自动检查：失败不打扰，结果只进状态栏与关于页。</summary>
 	private async void AutoCheckOnStartup()
 	{
@@ -514,6 +516,7 @@ internal sealed class MainForm : Form
 			return;
 		}
 		_updatePageUrl = result.Latest?.PageUrl ?? string.Empty;
+		_lastUpdateResult = result;
 		Tone tone = result.HasUpdate ? Tone.Accent : ((result.Status == UpdateStatus.Failed) ? Tone.Bad : ((result.Status == UpdateStatus.UpToDate) ? Tone.Ok : Tone.Muted));
 		_aboutPage.SetUpdateState(result.Message, tone, result.HasUpdate, result.Latest?.Version ?? string.Empty, result.HasUpdate ? result.Latest!.Notes : string.Empty);
 		if (manual || result.Status != UpdateStatus.NotConfigured)
@@ -521,6 +524,86 @@ internal sealed class MainForm : Form
 			_lastUserMessageAt = DateTime.UtcNow;
 			_shell.Status.SetMessage(result.Message, tone);
 		}
+	}
+
+	/// <summary>应用内更新：下载安装包 → 校验 sha256 → 退出程序并由接力脚本静默安装 → 自动重启新版本。</summary>
+	internal async Task<bool> PerformInAppUpdateAsync()
+	{
+		UpdateCheckResult result = _lastUpdateResult;
+		if (!result.HasUpdate || result.Latest == null || result.Latest.AssetUrl.Length == 0)
+		{
+			_lastUserMessageAt = DateTime.UtcNow;
+			_shell.Status.SetMessage("没有可下载的安装包（请先检查更新）", Tone.Warn);
+			return false;
+		}
+		string fileName = result.Latest.AssetName.Length > 0 ? result.Latest.AssetName : ("PocketDeck-" + result.Latest.Version + "-setup.exe");
+		string target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PocketDeck", "updates", fileName);
+		try
+		{
+			_aboutPage.SetUpdateState("正在下载更新… 0%", Tone.Info, true, result.Latest.Version, result.Latest.Notes);
+			Progress<double> progress = new Progress<double>(delegate(double ratio)
+			{
+				if (!IsDisposed && !Disposing)
+				{
+					_aboutPage.SetUpdateState($"正在下载更新… {(int)Math.Round(ratio * 100.0)}%", Tone.Info, true, result.Latest.Version, result.Latest.Notes);
+				}
+			});
+			bool ok = await UpdateCheckService.DownloadAsync(result.Latest.AssetUrl, target, result.Latest.AssetSha256, progress, _formLifetime.Token).ConfigureAwait(continueOnCapturedContext: true);
+			if (IsDisposed || Disposing)
+			{
+				return false;
+			}
+			if (!ok)
+			{
+				_lastUserMessageAt = DateTime.UtcNow;
+				_shell.Status.SetMessage("更新包校验失败（sha256 不匹配），已丢弃", Tone.Bad);
+				_aboutPage.SetUpdateState("下载校验失败，请重试", Tone.Bad, true, result.Latest.Version, result.Latest.Notes);
+				return false;
+			}
+			_lastUserMessageAt = DateTime.UtcNow;
+			_shell.Status.SetMessage("更新包已下载并校验通过，正在安装…", Tone.Ok);
+			_aboutPage.SetUpdateState("正在安装并重启…", Tone.Ok, true, result.Latest.Version, result.Latest.Notes);
+			StartDeferredInstall(target);
+			Close();
+			return true;
+		}
+		catch (OperationCanceledException)
+		{
+			return false;
+		}
+		catch (Exception ex)
+		{
+			_lastUserMessageAt = DateTime.UtcNow;
+			_shell.Status.SetMessage("更新失败：" + ex.Message, Tone.Bad);
+			_aboutPage.SetUpdateState("更新失败：" + ex.Message, Tone.Bad, true, result.Latest.Version, result.Latest.Notes);
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// 接力脚本：等本进程退出 → 静默安装到当前目录（就地更新，便携版与安装版都适用）→ 重新启动 → 自删。
+	/// 运行中的 exe 无法被覆盖，所以必须先退出，由脚本接手。
+	/// </summary>
+	private void StartDeferredInstall(string installerPath)
+	{
+		string baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+		string scriptPath = Path.Combine(Path.GetTempPath(), "pocketdeck-update.cmd");
+		string script = string.Join("\r\n", new string[]
+		{
+			"@echo off",
+			"ping -n 3 127.0.0.1 >nul",
+			"\"" + installerPath + "\" --silent --install-dir \"" + baseDir + "\"",
+			"start \"\" \"" + Path.Combine(baseDir, AppIdentity.ExecutableName) + "\"",
+			"del \"%~f0\"",
+			string.Empty,
+		});
+		File.WriteAllText(scriptPath, script, System.Text.Encoding.Default);
+		Process.Start(new ProcessStartInfo("cmd.exe", "/c \"" + scriptPath + "\"")
+		{
+			UseShellExecute = false,
+			CreateNoWindow = true,
+			WindowStyle = ProcessWindowStyle.Hidden,
+		});
 	}
 
 	private void OpenExternalUrl(string url)

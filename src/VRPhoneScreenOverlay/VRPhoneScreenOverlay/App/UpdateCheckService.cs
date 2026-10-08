@@ -29,7 +29,7 @@ internal enum UpdateStatus
 }
 
 /// <summary>一次发布（GitHub Release 的必要字段）。</summary>
-internal sealed record UpdateRelease(string Version, string Tag, string Title, string Notes, string PageUrl, bool PreRelease, DateTimeOffset? PublishedAt);
+internal sealed record UpdateRelease(string Version, string Tag, string Title, string Notes, string PageUrl, bool PreRelease, DateTimeOffset? PublishedAt, string AssetName, string AssetUrl, long AssetSize, string AssetSha256);
 
 /// <summary>检查结果。</summary>
 internal sealed record UpdateCheckResult(UpdateStatus Status, string CurrentVersion, UpdateRelease? Latest, string Message)
@@ -191,6 +191,7 @@ internal static class UpdateCheckService
 				continue;
 			}
 			DateTimeOffset? published = DateTimeOffset.TryParse(GetString(item, "published_at"), CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset parsed) ? parsed : null;
+			(string assetName, string assetUrl, long assetSize, string assetSha) = SelectAsset(item);
 			releases.Add(new UpdateRelease(
 				Version: NormalizeVersion(tag),
 				Tag: tag,
@@ -198,12 +199,95 @@ internal static class UpdateCheckService
 				Notes: GetString(item, "body"),
 				PageUrl: GetString(item, "html_url"),
 				PreRelease: preRelease,
-				PublishedAt: published));
+				PublishedAt: published,
+				AssetName: assetName,
+				AssetUrl: assetUrl,
+				AssetSize: assetSize,
+				AssetSha256: assetSha));
 		}
 		return releases
 			.OrderByDescending(release => release.PublishedAt ?? DateTimeOffset.MinValue)
 			.ThenByDescending(release => release.Version, Comparer<string>.Create(CompareVersions))
 			.FirstOrDefault();
+	}
+
+	/// <summary>挑选安装包资产：优先名字里带 setup 的 exe，否则取第一个。</summary>
+	private static (string Name, string Url, long Size, string Sha256) SelectAsset(JsonElement release)
+	{
+		string name = string.Empty;
+		string url = string.Empty;
+		long size = 0L;
+		string sha = string.Empty;
+		if (!release.TryGetProperty("assets", out JsonElement assets) || assets.ValueKind != JsonValueKind.Array)
+		{
+			return (name, url, size, sha);
+		}
+		foreach (JsonElement asset in assets.EnumerateArray())
+		{
+			string candidate = GetString(asset, "name");
+			if (candidate.Length == 0)
+			{
+				continue;
+			}
+			bool preferred = candidate.Contains("setup", StringComparison.OrdinalIgnoreCase) && candidate.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+			if (url.Length > 0 && !preferred)
+			{
+				continue;
+			}
+			name = candidate;
+			url = GetString(asset, "browser_download_url");
+			size = (asset.TryGetProperty("size", out JsonElement sizeElement) && sizeElement.ValueKind == JsonValueKind.Number) ? sizeElement.GetInt64() : 0L;
+			sha = GetString(asset, "digest").Replace("sha256:", string.Empty, StringComparison.OrdinalIgnoreCase);
+			if (preferred)
+			{
+				break;
+			}
+		}
+		return (name, url, size, sha);
+	}
+
+	/// <summary>
+	/// 下载安装包到本地并校验 sha256（GitHub 提供 digest 时校验；不匹配则删除并返回 false）。
+	/// progress 汇报 0~1 的进度。
+	/// </summary>
+	public static async Task<bool> DownloadAsync(string url, string destinationPath, string expectedSha256, IProgress<double>? progress, CancellationToken cancellationToken)
+	{
+		string? folder = Path.GetDirectoryName(destinationPath);
+		if (!string.IsNullOrEmpty(folder))
+		{
+			Directory.CreateDirectory(folder);
+		}
+		using HttpResponseMessage response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+		response.EnsureSuccessStatusCode();
+		long total = response.Content.Headers.ContentLength ?? 0L;
+		await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+		await using FileStream output = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+		using System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create();
+		byte[] buffer = new byte[81920];
+		long received = 0L;
+		int read;
+		while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+		{
+			await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+			sha.TransformBlock(buffer, 0, read, null, 0);
+			received += read;
+			if (total > 0L)
+			{
+				progress?.Report(received / (double)total);
+			}
+		}
+		sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+		await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+		if (expectedSha256.Length > 0)
+		{
+			string actual = Convert.ToHexString(sha.Hash ?? Array.Empty<byte>()).ToLowerInvariant();
+			if (!string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase))
+			{
+				File.Delete(destinationPath);
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static string GetString(JsonElement element, string name)

@@ -8,7 +8,7 @@ $staging  = "$d\build\release-app"
 $zip      = "$d\build\app.zip"
 $csproj   = "$d\src\PocketDeck.Setup\PocketDeck.Setup.csproj"
 $publish  = "$d\src\PocketDeck.Setup\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\PocketDeck.Setup.exe"
-$release  = "$d\release\PocketDeck-0.2beta-setup.exe"
+$release  = "$d\release\PocketDeck-0.3beta-setup.exe"
 
 if (Get-Process PocketDeck -ErrorAction SilentlyContinue) { throw 'app is running; close it first' }
 

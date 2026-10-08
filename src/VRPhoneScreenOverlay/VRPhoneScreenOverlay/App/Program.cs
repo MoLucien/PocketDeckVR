@@ -43,6 +43,11 @@ internal static class Program
 	private static int Main(string[] args)
 	{
 		InstallAssemblyFallback();
+		if (args.Length >= 1 && string.Equals(args[0], "--update-now", StringComparison.Ordinal))
+		{
+			return UpdateNowCommand.RunAsync().GetAwaiter().GetResult();
+		}
+
 		if (args.Length == 1 && string.Equals(args[0], "--smoke-test", StringComparison.Ordinal))
 		{
 			return AppSmokeTest.Run();
